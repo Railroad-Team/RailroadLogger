@@ -23,6 +23,22 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.fusesource.jansi.Ansi;
+import org.fusesource.jansi.AnsiColors;
+import org.fusesource.jansi.AnsiConsole;
+import static org.fusesource.jansi.Ansi.ansi;
+import static org.fusesource.jansi.Ansi.Color.*;
+
+
+// TODO: Add support for customizing the log format
+// TODO: Add support for time based log deletion (e.g., delete logs older than 7 days) - should be configurable
+// TODO: Add support for customizing the log directory and file names (useful for plugins)
+// TODO: Add support for logging to multiple files (e.g., latest.log and pluginName.log)
+// TODO: Add support for logging to a remote server (?)
+// TODO: Add support for configuring the write frequency (e.g., write every 5 seconds instead of 1 second)
+// TODO: Add support for disabling log compression (e.g., for debugging purposes)
+// TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
+
 public class LoggerImpl implements Logger {
     private final String name;
 
@@ -65,6 +81,9 @@ public class LoggerImpl implements Logger {
                 Files.deleteIfExists(archivedLogPath);
             }
 
+            System.setProperty("jansi.passthrough", "true");
+            AnsiConsole.systemInstall();
+
             writeLog();
         } catch (IOException exception) {
             throw new RuntimeException("Failed to initialize logging", exception);
@@ -93,6 +112,14 @@ public class LoggerImpl implements Logger {
 
     @Override
     public void log(String message, LoggingLevel level, Object... objects) {
+        Ansi.Color logColor;
+
+        switch(level){
+            case ERROR -> logColor = RED;
+            case WARN -> logColor = YELLOW;
+            default -> logColor = WHITE;
+        }
+
         if(message == null || message.isEmpty())
             return;
 
@@ -123,7 +150,8 @@ public class LoggerImpl implements Logger {
         }
 
         message = messageBuilder.toString();
-        System.out.println(message);
+
+        System.out.println(ansi().eraseScreen().fg(logColor).a(message).reset());
 
         LOGGING_MESSAGES.add(message);
     }

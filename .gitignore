@@ -37,3 +37,9 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### log folder ###
+/logs
+
+### file for testing logger ###
+Test.java
