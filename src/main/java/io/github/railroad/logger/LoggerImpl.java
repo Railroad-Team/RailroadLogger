@@ -13,11 +13,10 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.time.Instant;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -25,6 +24,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.fusesource.jansi.Ansi.Color.*;
 import static org.fusesource.jansi.Ansi.ansi;
@@ -40,6 +40,7 @@ public class LoggerImpl implements Logger {
     private final String name;
     private static boolean isCompressionEnabled = true;
     private static long logFrequency = 1000;
+    private static int deletionFrequency = 1;
 
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
     private static final DateTimeFormatter LOGGING_DATE_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
@@ -87,6 +88,33 @@ public class LoggerImpl implements Logger {
                 if(isCompressionEnabled){
                     compress(archivedLogPath);
                     Files.deleteIfExists(archivedLogPath);
+                }
+                if(deletionFrequency > 0){
+                    try(Stream<Path> files = Files.list(LOG_DIRECTORY)){
+                        files.forEach(path -> {
+                            String fileName = path.getFileName().toString();
+                            //gets the string before the extension and convert it to a TemporalAccessor object
+                            TemporalAccessor logDate;
+                            try {
+                                logDate = LOG_DATE_FORMAT.parse(fileName.substring(0, fileName.indexOf(".")));
+                            } catch (DateTimeException e){
+                                return;
+                            }
+
+                            //TODO doesnt like this :(
+                            Instant logDateInstant = Instant.from(logDate);
+
+                            Instant daysAgo = Instant.now().minus(deletionFrequency, ChronoUnit.DAYS);
+
+                            if(logDateInstant.isBefore(daysAgo)){
+                                try {
+                                    Files.deleteIfExists(path);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
+                        });
+                    }
                 }
             }
 
