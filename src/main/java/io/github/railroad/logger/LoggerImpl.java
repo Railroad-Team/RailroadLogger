@@ -1,6 +1,8 @@
 package io.github.railroad.logger;
 
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
+import org.fusesource.jansi.Ansi;
+import org.fusesource.jansi.AnsiConsole;
 
 import java.io.*;
 import java.nio.channels.Channels;
@@ -19,26 +21,25 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.fusesource.jansi.Ansi;
-import org.fusesource.jansi.AnsiConsole;
-import static org.fusesource.jansi.Ansi.ansi;
 import static org.fusesource.jansi.Ansi.Color.*;
+import static org.fusesource.jansi.Ansi.ansi;
 
 // TODO: Add support for customizing the log format
 // TODO: Add support for time based log deletion (e.g., delete logs older than 7 days) - should be configurable
 // TODO: Add support for customizing the log directory and file names (useful for plugins)
 // TODO: Add support for logging to multiple files (e.g., latest.log and pluginName.log)
 // TODO: Add support for logging to a remote server (?)
-// TODO: Add support for configuring the write frequency (e.g., write every 5 seconds instead of 1 second)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
 
 public class LoggerImpl implements Logger {
     private final String name;
     private static boolean isCompressionEnabled = true;
+    private static long logFrequency = 1000;
 
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
     private static final DateTimeFormatter LOGGING_DATE_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
@@ -49,7 +50,7 @@ public class LoggerImpl implements Logger {
 
     private static final List<String> LOGGING_MESSAGES = new CopyOnWriteArrayList<>();
 
-    private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor();
+    private static final VariableRateScheduler SCHEDULER = new VariableRateScheduler(Executors.newSingleThreadScheduledExecutor());
 
     public LoggerImpl(String name, Path LOG_DIRECTORY) {
         this.name = name;
@@ -65,6 +66,11 @@ public class LoggerImpl implements Logger {
     public static void setIsCompressionEnabled(boolean compression){
         LoggerImpl.isCompressionEnabled = compression;
     }
+
+    public static void setLogFrequency(int seconds){
+        LoggerImpl.logFrequency = seconds;
+    }
+
 
     public static void initialise() {
         try {
@@ -188,17 +194,18 @@ public class LoggerImpl implements Logger {
     }
 
     private static void writeLog() {
-        SCHEDULER.scheduleAtFixedRate(() -> {
+        SCHEDULER.scheduleAtVariableRate(() -> {
             if(LOGGING_MESSAGES.isEmpty())
                 return;
             try {
                 var logText = String.join("\n", LOGGING_MESSAGES);
                 LOGGING_MESSAGES.clear();
-                Files.writeString(LATEST_LOG, logText, StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+                Files.writeString(LATEST_LOG, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+                System.out.println("logged");
             } catch (IOException exception) {
                 System.exit(-1);
             }
-        }, 0, 1, TimeUnit.SECONDS);
+        }, 0, () -> logFrequency);
         Runtime.getRuntime().addShutdownHook(new Thread(SCHEDULER::shutdown));
     }
 }
