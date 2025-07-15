@@ -1,163 +1,98 @@
 package io.github.railroad.logger;
 
-import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
+import io.github.railroad.logger.util.VariableRateScheduler;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.fusesource.jansi.Ansi;
 import org.fusesource.jansi.AnsiConsole;
 
-import java.io.*;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.time.*;
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 import static org.fusesource.jansi.Ansi.Color.*;
 import static org.fusesource.jansi.Ansi.ansi;
 
 // TODO: Add support for customizing the log format
-// TODO: Add support for time based log deletion (e.g., delete logs older than 7 days) - should be configurable
-// TODO: Add support for customizing the log directory and file names (useful for plugins)
-// TODO: Add support for logging to multiple files (e.g., latest.log and pluginName.log)
 // TODO: Add support for logging to a remote server (?)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
-
 public class LoggerImpl implements Logger {
-    private final String name;
-    private static boolean isCompressionEnabled = true;
-    private static long logFrequency = 1000;
-    private static int deletionFrequency = 1;
-
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
-    private static final DateTimeFormatter LOGGING_DATE_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
-    private static final DateTimeFormatter LOG_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
+    private final Queue<String> loggingMessages = new ConcurrentLinkedQueue<>();
+    private final VariableRateScheduler scheduler = new VariableRateScheduler(Executors.newSingleThreadScheduledExecutor(new BasicThreadFactory.Builder().daemon(true).build()));
 
-    private static Path LOG_DIRECTORY;
-    private static Path LATEST_LOG;
+    @Getter
+    private final String name;
 
-    private static final List<String> LOGGING_MESSAGES = new CopyOnWriteArrayList<>();
+    @Getter
+    private final List<Path> filesToLogTo = new ArrayList<>();
 
-    private static final VariableRateScheduler SCHEDULER = new VariableRateScheduler(Executors.newSingleThreadScheduledExecutor());
+    @Getter
+    private final DateTimeFormatter logDateFormat;
 
-    public LoggerImpl(String name, Path LOG_DIRECTORY) {
+    @Getter
+    private final DateTimeFormatter loggingDateFormat;
+
+    @Getter
+    @Setter
+    private boolean isCompressionEnabled = true;
+
+    @Getter
+    @Setter
+    private long logFrequency;
+
+    @Getter
+    @Setter
+    private long deletionFrequency;
+
+    @Getter
+    @Setter
+    private Path logDirectory;
+
+    LoggerImpl(String name, DateTimeFormatter loggingDateFormat, DateTimeFormatter logDateFormat) {
         this.name = name;
-        this.LOG_DIRECTORY = LOG_DIRECTORY;
-        LATEST_LOG = LOG_DIRECTORY.resolve("latest.log");
-        initialise();
-    }
-
-    public LoggerImpl(Class<?> clazz, Path LOG_DIRECTORY) {
-        this(clazz.getSimpleName(), LOG_DIRECTORY);
-    }
-
-    public static void setIsCompressionEnabled(boolean compression){
-        LoggerImpl.isCompressionEnabled = compression;
-    }
-
-    public static void setLogFrequency(int seconds){
-        LoggerImpl.logFrequency = seconds;
-    }
-
-
-    public static void initialise() {
-        try {
-            Files.createDirectories(LOG_DIRECTORY);
-            if (Files.exists(LATEST_LOG)) {
-                FileTime dateCreated = Files.readAttributes(LATEST_LOG, BasicFileAttributes.class).creationTime();
-                Path archivedLogPath = LOG_DIRECTORY.resolve(formatFileTime(dateCreated) + ".log");
-
-                // We copy the file instead of moving, and then set the creation time manually so that we can bypass
-                // window's file-system tunneling
-                Files.copy(LATEST_LOG, archivedLogPath, StandardCopyOption.REPLACE_EXISTING);
-                Files.setAttribute(LATEST_LOG, "creationTime", FileTime.from(Instant.now()));
-                Files.write(LATEST_LOG, new byte[0], StandardOpenOption.TRUNCATE_EXISTING);
-                if(isCompressionEnabled){
-                    compress(archivedLogPath);
-                    Files.deleteIfExists(archivedLogPath);
-                }
-                if(deletionFrequency > 0){
-                    try(Stream<Path> files = Files.list(LOG_DIRECTORY)){
-                        files.forEach(path -> {
-                            String fileName = path.getFileName().toString();
-                            //gets the string before the extension and convert it to a TemporalAccessor object
-                            TemporalAccessor logDate;
-                            try {
-                                logDate = LOG_DATE_FORMAT.parse(fileName.substring(0, fileName.indexOf(".")));
-                            } catch (DateTimeException e){
-                                return;
-                            }
-
-                            //TODO doesnt like this :(
-                            Instant logDateInstant = Instant.from(logDate);
-
-                            Instant daysAgo = Instant.now().minus(deletionFrequency, ChronoUnit.DAYS);
-
-                            if(logDateInstant.isBefore(daysAgo)){
-                                try {
-                                    Files.deleteIfExists(path);
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-
-            System.setProperty("jansi.passthrough", "true");
-            AnsiConsole.systemInstall();
-
-            writeLog();
-        } catch (IOException exception) {
-            throw new RuntimeException("Failed to initialize logging", exception);
-        }
+        this.loggingDateFormat = loggingDateFormat;
+        this.logDateFormat = logDateFormat;
     }
 
     @Override
-    public void error(String logMessage, Object... objects) {
-        log(logMessage, LoggingLevel.ERROR, objects);
-    }
+    public void init() {
+        System.setProperty("jansi.passthrough", "true");
+        AnsiConsole.systemInstall();
 
-    @Override
-    public void warn(String logMessage, Object... objects) {
-        log(logMessage, LoggingLevel.WARN, objects);
-    }
-
-    @Override
-    public void info(String logMessage, Object... objects) {
-        log(logMessage, LoggingLevel.INFO, objects);
-    }
-
-    @Override
-    public void debug(String logMessage, Object... objects) {
-        log(logMessage, LoggingLevel.DEBUG, objects);
+        beginWriteScheduling();
     }
 
     @Override
     public void log(String message, LoggingLevel level, Object... objects) {
-        Ansi.Color logColor;
+        Ansi.Color logColor = switch (level) {
+            case ERROR -> RED;
+            case WARN -> YELLOW;
+            case INFO -> GREEN;
+            case DEBUG -> BLUE;
+            default -> WHITE;
+        };
 
-        switch(level){
-            case ERROR -> logColor = RED;
-            case WARN -> logColor = YELLOW;
-            default -> logColor = WHITE;
-        }
-
-        if(message == null || message.isEmpty())
+        if (message == null || message.isEmpty())
             return;
 
         long bracesCount = Pattern.compile(BRACE_REGEX).matcher(message).results().count();
@@ -166,7 +101,7 @@ public class LoggerImpl implements Logger {
         for (int i = 0; i < objects.length; i++) {
             Object object = objects[i];
             // We check if the last object is a throwable and skip replacement if so.
-            // This is to allow for cases such as: Railroad.LOGGER.error("Failed to compress log file {}", exception, exception);
+            // This is to allow for cases such as: LOGGER.error("Failed to compress log file {}", exception, exception);
             if (object instanceof Throwable throwable && i >= bracesCount) {
                 throwables.add(throwable);
                 continue;
@@ -175,7 +110,7 @@ public class LoggerImpl implements Logger {
             message = message.replaceFirst(BRACE_REGEX, Matcher.quoteReplacement(Objects.toString(object)));
         }
 
-        var messageBuilder = new StringBuilder(getPaddedTime() + " [" + Thread.currentThread().getName() + "] " + level.name() + " " + this.name + " - " + message);
+        var messageBuilder = new StringBuilder(loggingDateFormat.format(LocalTime.now()) + " [" + Thread.currentThread().getName() + "] " + level.name() + " " + this.name + " - " + message);
         for (Throwable throwable : throwables) {
             var stringWriter = new StringWriter();
             try (var printWriter = new PrintWriter(stringWriter)) {
@@ -188,52 +123,257 @@ public class LoggerImpl implements Logger {
 
         message = messageBuilder.toString();
 
-        System.out.println(ansi().eraseScreen().fg(logColor).a(message).reset());
+        System.out.println(ansi().eraseLine().fg(logColor).a(message).reset());
 
-        LOGGING_MESSAGES.add(message);
+        loggingMessages.offer(message);
     }
 
+    @Override
+    public void close() {
+        try {
+            AnsiConsole.systemUninstall();
+            scheduler.shutdown();
 
-    private static String getPaddedTime() {
-        return LOGGING_DATE_FORMAT.format(LocalTime.now());
-    }
-
-    private static String formatFileTime(FileTime fileTime) {
-        ZonedDateTime t = Instant.ofEpochMilli(fileTime.toMillis()).atZone(ZoneId.systemDefault());
-        return LOG_DATE_FORMAT.format(t);
-    }
-
-    private static void compress(Path path) {
-        Path outputPath = path.resolveSibling(path.getFileName().toString() + ".tar.gz");
-        try(var inputChannel = FileChannel.open(path, StandardOpenOption.READ);
-            var outChannel = FileChannel.open(outputPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            InputStream inputStream = Channels.newInputStream(inputChannel);
-            OutputStream outputStream = Channels.newOutputStream(outChannel);
-            var bufferedOutputStream = new BufferedOutputStream(outputStream);
-            var gzipOutputStream = new GzipCompressorOutputStream(bufferedOutputStream)) {
-            byte[] buf = new byte[8 * 1024];
-            int length;
-            while((length = inputStream.read(buf)) != -1) {
-                gzipOutputStream.write(buf, 0, length);
+            String logText = String.join("\n", loggingMessages);
+            loggingMessages.clear();
+            for (Path logFile : this.filesToLogTo) {
+                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
             }
         } catch (IOException exception) {
-            System.out.println();
+            System.err.println("Failed to close logger: " + exception.getMessage());
         }
     }
 
-    private static void writeLog() {
-        SCHEDULER.scheduleAtVariableRate(() -> {
-            if(LOGGING_MESSAGES.isEmpty())
+    @Override
+    public String formatFileTime(FileTime fileTime) {
+        ZonedDateTime zonedDateTime = Instant.ofEpochMilli(fileTime.toMillis()).atZone(ZoneId.systemDefault());
+        return getLogDateFormat().format(zonedDateTime);
+    }
+
+    @Override
+    public void addFileToLogTo(Path file) {
+        if (file == null)
+            throw new IllegalArgumentException("File to log to must not be null and must exist.");
+
+        this.filesToLogTo.add(file);
+    }
+
+    @Override
+    public void setLogFrequency(long frequency, TimeUnit timeUnit) {
+        if (frequency <= 0)
+            throw new IllegalArgumentException("Log frequency must be greater than 0.");
+
+        this.logFrequency = timeUnit.toMillis(frequency);
+    }
+
+    @Override
+    public void setDeletionFrequency(long frequency, TimeUnit timeUnit) {
+        if (frequency <= 0)
+            throw new IllegalArgumentException("Deletion frequency must be greater than 0.");
+
+        this.deletionFrequency = timeUnit.toMillis(frequency);
+    }
+
+    private void beginWriteScheduling() {
+        scheduler.scheduleAtVariableRate(() -> {
+            if (loggingMessages.isEmpty())
                 return;
+
             try {
-                var logText = String.join("\n", LOGGING_MESSAGES);
-                LOGGING_MESSAGES.clear();
-                Files.writeString(LATEST_LOG, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
-                System.out.println("logged");
+                List<String> messageCache = new ArrayList<>(this.loggingMessages);
+                var logText = String.join("\n", messageCache);
+                this.loggingMessages.removeAll(messageCache);
+                for (Path logFile : this.filesToLogTo) {
+                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+                }
             } catch (IOException exception) {
-                System.exit(-1);
+                System.err.println("Failed to write log messages: " + exception.getMessage());
+                exception.printStackTrace();
             }
         }, 0, () -> logFrequency);
-        Runtime.getRuntime().addShutdownHook(new Thread(SCHEDULER::shutdown));
+    }
+
+    /**
+     * Builder for creating a LoggerImpl instance.
+     */
+    public static class Builder {
+        private final String name;
+        private DateTimeFormatter loggingDateFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
+        private DateTimeFormatter logDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
+        private Path logDirectory = Path.of("logs");
+        private final List<Path> filesToLogTo = new ArrayList<>();
+        private boolean isCompressionEnabled = true;
+        private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
+        private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
+
+        private boolean logToLatest = true;
+
+        /**
+         * Creates a new Builder instance with the specified name.
+         *
+         * @param name The name of the logger.
+         */
+        public Builder(String name) {
+            this.name = name;
+        }
+
+        /**
+         * Creates a new Builder instance with the specified class name.
+         *
+         * @param clazz The class for which the logger is being created.
+         */
+        public Builder(Class<?> clazz) {
+            this.name = clazz.getSimpleName();
+        }
+
+        /**
+         * Sets the directory where log files will be stored.
+         *
+         * @param logDirectory The directory to store log files.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder logDirectory(Path logDirectory) {
+            this.logDirectory = logDirectory;
+            return this;
+        }
+
+        /**
+         * Adds a file to log to.
+         *
+         * @param file The file to log to.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder addFileToLogTo(Path file) {
+            this.filesToLogTo.add(file);
+            return this;
+        }
+
+        /**
+         * Adds a file to log to by name, using the log directory set in this builder.
+         *
+         * @param name The name of the file to log to.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder addFileToLogTo(String name) {
+            if (logDirectory == null)
+                throw new IllegalStateException("Log directory must be set before adding files to log to.");
+
+            this.filesToLogTo.add(logDirectory.resolve(name));
+            return this;
+        }
+
+        /**
+         * Enables or disables compression for log files.
+         *
+         * @param compression true to enable compression, false to disable.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder isCompressionEnabled(boolean compression) {
+            this.isCompressionEnabled = compression;
+            return this;
+        }
+
+        /**
+         * Sets the frequency at which logs are written to files.
+         *
+         * @param duration The duration of the frequency.
+         * @param unit     The time unit of the duration.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder logFrequency(long duration, TimeUnit unit) {
+            this.logFrequency = unit.toMillis(duration);
+            return this;
+        }
+
+        /**
+         * Sets the frequency at which old logs are deleted.
+         *
+         * @param duration The duration of the deletion frequency.
+         * @param unit     The time unit of the duration.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder deletionFrequency(long duration, TimeUnit unit) {
+            this.deletionFrequency = unit.toMillis(duration);
+            return this;
+        }
+
+        /**
+         * Disables logging to the latest.log file.
+         *
+         * @return This Builder instance for method chaining.
+         */
+        public Builder dontLogToLatest() {
+            this.logToLatest = false;
+            return this;
+        }
+
+        /**
+         * Sets the date format used for logging timestamps.
+         *
+         * @param loggingDateFormat The date format for logging timestamps.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder loggingDateFormat(DateTimeFormatter loggingDateFormat) {
+            this.loggingDateFormat = loggingDateFormat;
+            return this;
+        }
+
+        /**
+         * Sets the date format used for log file names.
+         *
+         * @param logDateFormat The date format for log file names.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder logDateFormat(DateTimeFormatter logDateFormat) {
+            this.logDateFormat = logDateFormat;
+            return this;
+        }
+
+        /**
+         * Builds the LoggerImpl instance with the specified configuration.
+         *
+         * @return A new LoggerImpl instance.
+         * @throws IllegalStateException if the log directory is not set.
+         */
+        public LoggerImpl build() {
+            if (name == null || name.isBlank())
+                throw new IllegalArgumentException("Logger name must not be null or empty.");
+
+            if (loggingDateFormat == null)
+                throw new IllegalArgumentException("Logging date format must not be null.");
+
+            if (logDateFormat == null)
+                throw new IllegalArgumentException("Log date format must not be null.");
+
+            if (logDirectory == null)
+                throw new IllegalStateException("Log directory must be set before building the logger.");
+
+            if (logFrequency < 0)
+                throw new IllegalArgumentException("Log frequency must be greater than or equal to 0.");
+
+            if (deletionFrequency < 0)
+                throw new IllegalArgumentException("Deletion frequency must be greater than or equal to 0.");
+
+            var logger = new LoggerImpl(name, loggingDateFormat, logDateFormat);
+            logger.setLogDirectory(logDirectory);
+            logger.setCompressionEnabled(isCompressionEnabled);
+            logger.setLogFrequency(logFrequency);
+            logger.setDeletionFrequency(deletionFrequency);
+
+            if (logToLatest) {
+                Path latestLog = logDirectory.resolve("latest.log");
+                logger.addFileToLogTo(latestLog);
+            }
+
+            for (Path file : filesToLogTo) {
+                if (file == null)
+                    continue;
+
+                logger.addFileToLogTo(file);
+            }
+
+            LoggerManager.registerLogger(logger);
+            return logger;
+        }
     }
 }
