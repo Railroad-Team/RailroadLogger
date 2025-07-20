@@ -12,13 +12,16 @@ public class Test {
                 .deletionFrequency(5, TimeUnit.MINUTES)
                 .logFrequency(1, TimeUnit.SECONDS)
                 .dontLogToLatest()
-                .addFileToLogTo("test.log")
-                .addFileToLogTo("beans.log")
-                .addFileToLogTo("yes/no.log")
+                .addLogFile("test.log")
+                .addLogFile("beans.log")
+                .addLogFile("yes/no.log")
                 .isCompressionEnabled(true)
+                .loggingLevel(LoggingLevel.INFO)
                 .build();
 
         LoggerManager.init();
+
+
 
         for (int i = 0; i < 1_000; i++) {
             LoggingLevel level = LoggingLevel.values()[i % LoggingLevel.values().length];

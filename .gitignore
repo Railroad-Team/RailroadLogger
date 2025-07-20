@@ -40,3 +40,6 @@ bin/
 
 ### Log folder ###
 logs/
+
+### Test ###
+src/test/

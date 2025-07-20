@@ -14,7 +14,8 @@ public interface Logger {
     /**
      * Initializes the logger, setting up any necessary resources or configurations.
      */
-    default void init() {}
+    default void init() {
+    }
 
     /**
      * Gets the name of the logger.
@@ -39,7 +40,7 @@ public interface Logger {
      * @param logMessage The warning message to log.
      * @param objects    Additional objects to include in the log message.
      */
-   default void warn(String logMessage, Object... objects) {
+    default void warn(String logMessage, Object... objects) {
         log(logMessage, LoggingLevel.WARN, objects);
     }
 
@@ -131,24 +132,38 @@ public interface Logger {
     void setLogDirectory(Path logDirectory);
 
     /**
+     * Gets the current logging level.
+     *
+     * @return The current logging level.
+     */
+    LoggingLevel getLoggingLevel();
+
+    /**
+     * Sets the logging level for the logger.
+     *
+     * @param level The logging level to set.
+     */
+    void setLoggingLevel(LoggingLevel level);
+
+    /**
      * Adds a file to which logs will be written.
      *
      * @param file The file to add to the log.
      */
-    void addFileToLogTo(Path file);
+    void addLogFile(Path file);
 
     /**
      * Adds a file to which logs will be written by its name (should be resolved using the log directory).
      *
      * @param name The name of the file to add to the log.
      */
-    default void addFileToLogTo(String name) {
+    default void addLogFile(String name) {
         Path logDirectory = getLogDirectory();
         if (logDirectory == null)
             throw new IllegalStateException("Log directory must be set before adding files to log to.");
 
         Path file = logDirectory.resolve(name);
-        addFileToLogTo(file);
+        addLogFile(file);
     }
 
     /**
@@ -176,5 +191,6 @@ public interface Logger {
     /**
      * Closes the logger and releases any resources it holds.
      */
-    default void close() {}
+    default void close() {
+    }
 }

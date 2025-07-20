@@ -1,5 +1,8 @@
-package io.github.railroad.logger;
+package io.github.railroad.logger.impl;
 
+import io.github.railroad.logger.Logger;
+import io.github.railroad.logger.LoggerManager;
+import io.github.railroad.logger.LoggingLevel;
 import io.github.railroad.logger.util.VariableRateScheduler;
 import lombok.Getter;
 import lombok.Setter;
@@ -35,7 +38,8 @@ import static org.fusesource.jansi.Ansi.ansi;
 // TODO: Add support for customizing the log format
 // TODO: Add support for logging to a remote server (?)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
-public class LoggerImpl implements Logger {
+// TODO: Add support for setting the log level
+public class DefaultLogger implements Logger {
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
     private final Queue<String> loggingMessages = new ConcurrentLinkedQueue<>();
     private final VariableRateScheduler scheduler = new VariableRateScheduler(Executors.newSingleThreadScheduledExecutor(new BasicThreadFactory.Builder().daemon(true).build()));
@@ -68,7 +72,11 @@ public class LoggerImpl implements Logger {
     @Setter
     private Path logDirectory;
 
-    LoggerImpl(String name, DateTimeFormatter loggingDateFormat, DateTimeFormatter logDateFormat) {
+    @Getter
+    @Setter
+    private LoggingLevel loggingLevel;
+
+    DefaultLogger(String name, DateTimeFormatter loggingDateFormat, DateTimeFormatter logDateFormat) {
         this.name = name;
         this.loggingDateFormat = loggingDateFormat;
         this.logDateFormat = logDateFormat;
@@ -84,6 +92,9 @@ public class LoggerImpl implements Logger {
 
     @Override
     public void log(String message, LoggingLevel level, Object... objects) {
+
+
+
         Ansi.Color logColor = switch (level) {
             case ERROR -> RED;
             case WARN -> YELLOW;
@@ -123,7 +134,10 @@ public class LoggerImpl implements Logger {
 
         message = messageBuilder.toString();
 
-        System.out.println(ansi().eraseLine().fg(logColor).a(message).reset());
+        int logLevel = this.loggingLevel.ordinal();
+        if(level.ordinal() <= logLevel){
+            System.out.println(ansi().eraseLine().fg(logColor).a(message).reset());
+        }
 
         loggingMessages.offer(message);
     }
@@ -151,7 +165,7 @@ public class LoggerImpl implements Logger {
     }
 
     @Override
-    public void addFileToLogTo(Path file) {
+    public void addLogFile(Path file) {
         if (file == null)
             throw new IllegalArgumentException("File to log to must not be null and must exist.");
 
@@ -194,7 +208,7 @@ public class LoggerImpl implements Logger {
     }
 
     /**
-     * Builder for creating a LoggerImpl instance.
+     * Builder for creating a DefaultLogger instance.
      */
     public static class Builder {
         private final String name;
@@ -205,6 +219,7 @@ public class LoggerImpl implements Logger {
         private boolean isCompressionEnabled = true;
         private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
         private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
+        private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
 
         private boolean logToLatest = true;
 
@@ -243,7 +258,7 @@ public class LoggerImpl implements Logger {
          * @param file The file to log to.
          * @return This Builder instance for method chaining.
          */
-        public Builder addFileToLogTo(Path file) {
+        public Builder addLogFile(Path file) {
             this.filesToLogTo.add(file);
             return this;
         }
@@ -254,7 +269,7 @@ public class LoggerImpl implements Logger {
          * @param name The name of the file to log to.
          * @return This Builder instance for method chaining.
          */
-        public Builder addFileToLogTo(String name) {
+        public Builder addLogFile(String name) {
             if (logDirectory == null)
                 throw new IllegalStateException("Log directory must be set before adding files to log to.");
 
@@ -330,12 +345,23 @@ public class LoggerImpl implements Logger {
         }
 
         /**
-         * Builds the LoggerImpl instance with the specified configuration.
+         * Sets the logging level for the logger.
          *
-         * @return A new LoggerImpl instance.
+         * @param loggingLevel The logging level to set.
+         * @return This Builder instance for method chaining.
+         */
+        public Builder loggingLevel(LoggingLevel loggingLevel){
+            this.loggingLevel = loggingLevel;
+            return this;
+        }
+
+        /**
+         * Builds the DefaultLogger instance with the specified configuration.
+         *
+         * @return A new DefaultLogger instance.
          * @throws IllegalStateException if the log directory is not set.
          */
-        public LoggerImpl build() {
+        public DefaultLogger build() {
             if (name == null || name.isBlank())
                 throw new IllegalArgumentException("Logger name must not be null or empty.");
 
@@ -354,22 +380,26 @@ public class LoggerImpl implements Logger {
             if (deletionFrequency < 0)
                 throw new IllegalArgumentException("Deletion frequency must be greater than or equal to 0.");
 
-            var logger = new LoggerImpl(name, loggingDateFormat, logDateFormat);
+            if(loggingLevel == null)
+                throw new IllegalArgumentException("Logging level must not be null.");
+
+            var logger = new DefaultLogger(name, loggingDateFormat, logDateFormat);
             logger.setLogDirectory(logDirectory);
             logger.setCompressionEnabled(isCompressionEnabled);
             logger.setLogFrequency(logFrequency);
             logger.setDeletionFrequency(deletionFrequency);
+            logger.setLoggingLevel(loggingLevel);
 
             if (logToLatest) {
                 Path latestLog = logDirectory.resolve("latest.log");
-                logger.addFileToLogTo(latestLog);
+                logger.addLogFile(latestLog);
             }
 
             for (Path file : filesToLogTo) {
                 if (file == null)
                     continue;
 
-                logger.addFileToLogTo(file);
+                logger.addLogFile(file);
             }
 
             LoggerManager.registerLogger(logger);

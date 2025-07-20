@@ -1,5 +1,6 @@
 package io.github.railroad.logger;
 
+import io.github.railroad.logger.impl.DefaultLogger;
 import io.github.railroad.logger.util.LoggerUtils;
 
 import java.io.IOException;
@@ -91,26 +92,26 @@ public final class LoggerManager {
     }
 
     /**
-     * Creates a new LoggerImpl.Builder instance for a logger with the specified name.
+     * Creates a new DefaultLogger.Builder instance for a logger with the specified name.
      *
      * @param name The name of the logger.
-     * @return A new LoggerImpl.Builder instance.
+     * @return A new DefaultLogger.Builder instance.
      */
-    public static LoggerImpl.Builder create(String name) {
-        return new LoggerImpl.Builder(name);
+    public static DefaultLogger.Builder create(String name) {
+        return new DefaultLogger.Builder(name);
     }
 
     /**
-     * Creates a new LoggerImpl.Builder instance for a logger associated with the specified class.
+     * Creates a new DefaultLogger.Builder instance for a logger associated with the specified class.
      *
      * @param clazz The class for which the logger is being created.
-     * @return A new LoggerImpl.Builder instance.
+     * @return A new DefaultLogger.Builder instance.
      */
-    public static LoggerImpl.Builder create(Class<?> clazz) {
+    public static DefaultLogger.Builder create(Class<?> clazz) {
         if (clazz == null)
             throw new IllegalArgumentException("Class cannot be null");
 
-        return new LoggerImpl.Builder(clazz);
+        return new DefaultLogger.Builder(clazz);
     }
 
     /**
