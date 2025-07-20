@@ -17,6 +17,7 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 repositories {
+    mavenLocal()
     mavenCentral()
     maven { url 'https://jitpack.io' }
 }
@@ -25,10 +26,20 @@ dependencies {
     implementation 'org.apache.commons:commons-compress:1.27.1'
 }
 
+tasks.register('sourcesJar', Jar) {
+    archiveClassifier = 'sources'
+    from sourceSets.main.allSource
+}
+
 publishing {
+    repositories {
+        mavenLocal()
+    }
     publications {
         mavenJava(MavenPublication) {
             from components.java
+
+            artifact tasks.sourcesJar
         }
     }
 }
