@@ -21,8 +21,6 @@ public class Test {
 
         LoggerManager.init();
 
-
-
         for (int i = 0; i < 1_000; i++) {
             LoggingLevel level = LoggingLevel.values()[i % LoggingLevel.values().length];
             logger.log("This is a test log message number {}", level, i);
