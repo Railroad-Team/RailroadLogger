@@ -59,7 +59,7 @@ public class VariableRateScheduler {
             try {
                 task.run();
             } finally {
-                // compute the next delay and re-submit ourselves
+                // Compute the next delay and re-submit ourselves
                 long nextDelay = delaySupplier.get();
                 if (nextDelay > 0) {
                     // Reschedule the task with the next delay
