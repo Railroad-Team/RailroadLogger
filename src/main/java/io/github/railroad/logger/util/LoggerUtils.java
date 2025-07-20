@@ -20,7 +20,7 @@ public class LoggerUtils {
              OutputStream outputStream = Channels.newOutputStream(outChannel);
              var bufferedOutputStream = new BufferedOutputStream(outputStream);
              var gzipOutputStream = new GzipCompressorOutputStream(bufferedOutputStream)) {
-            byte[] buf = new byte[8 * 1024];
+            var buf = new byte[8 * 1024];
             int length;
             while ((length = inputStream.read(buf)) != -1) {
                 gzipOutputStream.write(buf, 0, length);
