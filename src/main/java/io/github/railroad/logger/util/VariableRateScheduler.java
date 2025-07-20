@@ -32,7 +32,7 @@ public class VariableRateScheduler {
         // wrap the user’s task so that when it completes, we schedule the next one
         Runnable wrapper = new RunTask(task, initialDelay, delaySupplier);
 
-        // schedule the first execution
+        // Schedule the first execution
         exec.schedule(wrapper, initialDelay, TimeUnit.MILLISECONDS);
     }
 
