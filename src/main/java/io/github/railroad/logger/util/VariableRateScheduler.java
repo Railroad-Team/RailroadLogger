@@ -29,7 +29,7 @@ public class VariableRateScheduler {
      * @param delaySupplier  A supplier that provides the delay for subsequent executions.
      */
     public void scheduleAtVariableRate(Runnable task, long initialDelay, Supplier<Long> delaySupplier) {
-        // wrap the user’s task so that when it completes, we schedule the next one
+        // Wrap the user’s task so that when it completes, we schedule the next one
         Runnable wrapper = new RunTask(task, initialDelay, delaySupplier);
 
         // Schedule the first execution
