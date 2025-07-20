@@ -91,9 +91,6 @@ public class DefaultLogger implements Logger {
 
     @Override
     public void log(String message, LoggingLevel level, Object... objects) {
-
-
-
         Ansi.Color logColor = switch (level) {
             case ERROR -> RED;
             case WARN -> YELLOW;
