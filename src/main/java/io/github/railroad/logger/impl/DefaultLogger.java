@@ -38,7 +38,6 @@ import static org.fusesource.jansi.Ansi.ansi;
 // TODO: Add support for customizing the log format
 // TODO: Add support for logging to a remote server (?)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
-// TODO: Add support for setting the log level
 public class DefaultLogger implements Logger {
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
     private final Queue<String> loggingMessages = new ConcurrentLinkedQueue<>();
