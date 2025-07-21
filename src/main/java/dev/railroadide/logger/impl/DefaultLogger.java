@@ -1,9 +1,9 @@
-package io.github.railroad.logger.impl;
+package dev.railroadide.logger.impl;
 
-import io.github.railroad.logger.Logger;
-import io.github.railroad.logger.LoggerManager;
-import io.github.railroad.logger.LoggingLevel;
-import io.github.railroad.logger.util.VariableRateScheduler;
+import dev.railroadide.logger.Logger;
+import dev.railroadide.logger.LoggerManager;
+import dev.railroadide.logger.LoggingLevel;
+import dev.railroadide.logger.util.VariableRateScheduler;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;

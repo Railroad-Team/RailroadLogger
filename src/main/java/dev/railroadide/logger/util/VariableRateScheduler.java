@@ -1,4 +1,4 @@
-package io.github.railroad.logger.util;
+package dev.railroadide.logger.util;
 
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;

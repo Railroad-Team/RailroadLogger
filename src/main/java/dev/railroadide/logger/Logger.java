@@ -1,4 +1,4 @@
-package io.github.railroad.logger;
+package dev.railroadide.logger;
 
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;

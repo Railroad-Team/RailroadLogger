@@ -1,4 +1,4 @@
-package io.github.railroad.logger.util;
+package dev.railroadide.logger.util;
 
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 

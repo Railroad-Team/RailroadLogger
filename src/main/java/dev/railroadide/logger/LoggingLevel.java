@@ -1,4 +1,4 @@
-package io.github.railroad.logger;
+package dev.railroadide.logger;
 
 /**
  * Enum representing the different logging levels.

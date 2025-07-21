@@ -3,8 +3,8 @@ plugins {
     id 'maven-publish'
 }
 
-group = 'io.github.railroad'
-version = '1.0-SNAPSHOT'
+group = 'dev.railroadide'
+version = '1.0.0'
 
 java {
     toolchain {
@@ -19,7 +19,6 @@ tasks.withType(JavaCompile).configureEach {
 repositories {
     mavenLocal()
     mavenCentral()
-    maven { url 'https://jitpack.io' }
 }
 
 dependencies {
@@ -38,6 +37,13 @@ tasks.register('sourcesJar', Jar) {
 publishing {
     repositories {
         mavenLocal()
+        maven {
+            url "https://maven.railroadide.dev/releases"
+            credentials {
+                username = System.getenv("RAILROAD_MAVEN_USERNAME")
+                password = System.getenv("RAILROAD_MAVEN_PASSWORD")
+            }
+        }
     }
     publications {
         mavenJava(MavenPublication) {

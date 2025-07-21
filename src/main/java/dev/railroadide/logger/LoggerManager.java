@@ -1,7 +1,7 @@
-package io.github.railroad.logger;
+package dev.railroadide.logger;
 
-import io.github.railroad.logger.impl.DefaultLogger;
-import io.github.railroad.logger.util.LoggerUtils;
+import dev.railroadide.logger.impl.DefaultLogger;
+import dev.railroadide.logger.util.LoggerUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
