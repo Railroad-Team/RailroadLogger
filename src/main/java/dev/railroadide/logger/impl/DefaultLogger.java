@@ -154,7 +154,6 @@ public class DefaultLogger implements Logger {
         String loggingLevelName = level.name();
         String loggerName = this.name;
 
-        //arrange using config file
         try {
             if(Files.notExists(this.configFile)){
                 //default config
