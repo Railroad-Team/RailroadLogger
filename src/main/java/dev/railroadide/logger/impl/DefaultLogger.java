@@ -156,7 +156,7 @@ public class DefaultLogger implements Logger {
 
         //arrange using config file
         try {
-            if(!Files.exists(this.configFile)){
+            if(Files.notExists(this.configFile)){
                 //default config
                 Files.writeString(this.configFile, "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}", StandardOpenOption.CREATE_NEW);
             }
