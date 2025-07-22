@@ -22,10 +22,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -35,7 +32,6 @@ import java.util.regex.Pattern;
 import static org.fusesource.jansi.Ansi.Color.*;
 import static org.fusesource.jansi.Ansi.ansi;
 
-// TODO: Add support for customizing the log format
 // TODO: Add support for logging to a remote server (?)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
 public class DefaultLogger implements Logger {
@@ -74,6 +70,10 @@ public class DefaultLogger implements Logger {
     @Getter
     @Setter
     private LoggingLevel loggingLevel;
+
+    @Getter
+    @Setter
+    private Path configFile;
 
     DefaultLogger(String name, DateTimeFormatter loggingDateFormat, DateTimeFormatter logDateFormat) {
         this.name = name;
@@ -117,7 +117,10 @@ public class DefaultLogger implements Logger {
             message = message.replaceFirst(BRACE_REGEX, Matcher.quoteReplacement(Objects.toString(object)));
         }
 
-        var messageBuilder = new StringBuilder(loggingDateFormat.format(LocalTime.now()) + " [" + Thread.currentThread().getName() + "] " + level.name() + " " + this.name + " - " + message);
+        String messaage = arrangeMessage(level, message);
+
+        StringBuilder messageBuilder = new StringBuilder(messaage);
+
         for (Throwable throwable : throwables) {
             var stringWriter = new StringWriter();
             try (var printWriter = new PrintWriter(stringWriter)) {
@@ -136,6 +139,52 @@ public class DefaultLogger implements Logger {
         }
 
         loggingMessages.offer(message);
+    }
+
+    private String arrangeMessage(LoggingLevel level, String message){
+        LocalTime localTime = LocalTime.now();
+
+        long hours = localTime.getHour();
+        long minutes = localTime.getMinute();
+        long seconds = localTime.getSecond();
+        long milliseconds = localTime.getNano() / 1_000_000;
+        long nanoseconds = localTime.getNano();
+
+        String threadName = Thread.currentThread().getName();
+        String loggingLevelName = level.name();
+        String loggerName = this.name;
+
+        //arrange using config file
+        try {
+            if(!Files.exists(this.configFile)){
+                //default config
+                Files.writeString(this.configFile, "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}", StandardOpenOption.CREATE_NEW);
+            }
+
+            String logMessageArrangement = Files.readString(this.configFile);
+            Map<String, Object> m = new HashMap<>();
+
+
+            m.put("{hours}", hours);
+            m.put("{minutes}", minutes);
+            m.put("{seconds}", seconds);
+            m.put("{milliseconds}", milliseconds);
+            m.put("{nanoseconds}", nanoseconds);
+
+            m.put("{threadName}", threadName);
+            m.put("{loggingLevelName}", loggingLevelName);
+            m.put("{loggerName}", loggerName);
+            m.put("{message}", message);
+
+
+            for(Map.Entry<String, Object> entry :  m.entrySet()){
+                logMessageArrangement = logMessageArrangement.replace(entry.getKey(), String.valueOf(entry.getValue()));
+            }
+
+            return logMessageArrangement;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -188,7 +237,6 @@ public class DefaultLogger implements Logger {
         scheduler.scheduleAtVariableRate(() -> {
             if (loggingMessages.isEmpty())
                 return;
-
             try {
                 List<String> messageCache = new ArrayList<>(this.loggingMessages);
                 var logText = String.join("\n", messageCache);
@@ -207,17 +255,18 @@ public class DefaultLogger implements Logger {
      * Builder for creating a DefaultLogger instance.
      */
     public static class Builder {
+        //default builder attributes
         private final String name;
         private DateTimeFormatter loggingDateFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
         private DateTimeFormatter logDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
         private Path logDirectory = Path.of("logs");
         private final List<Path> filesToLogTo = new ArrayList<>();
         private boolean isCompressionEnabled = true;
-        private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
-        private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
+        private long logFrequency = java.util.concurrent.TimeUnit.SECONDS.toMillis(1); // Default to 1 second
+        private long deletionFrequency = java.util.concurrent.TimeUnit.DAYS.toMillis(1); // Default to 1 day
         private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
-
         private boolean logToLatest = true;
+        private Path configFile = Path.of("config.txt");
 
         /**
          * Creates a new Builder instance with the specified name.
@@ -352,6 +401,17 @@ public class DefaultLogger implements Logger {
         }
 
         /**
+         * Sets the config file location for the logger
+         *
+         * @param configFile The path of the config file
+         * @return This Builder instance for method chaining.
+         */
+        public Builder configFile(Path configFile){
+            this.configFile = configFile;
+            return this;
+        }
+
+        /**
          * Builds the DefaultLogger instance with the specified configuration.
          *
          * @return A new DefaultLogger instance.
@@ -379,12 +439,16 @@ public class DefaultLogger implements Logger {
             if(loggingLevel == null)
                 throw new IllegalArgumentException("Logging level must not be null.");
 
+            if (configFile == null)
+                throw new IllegalStateException("Config file location must be set before building the logger.");
+
             var logger = new DefaultLogger(name, loggingDateFormat, logDateFormat);
             logger.setLogDirectory(logDirectory);
             logger.setCompressionEnabled(isCompressionEnabled);
             logger.setLogFrequency(logFrequency);
             logger.setDeletionFrequency(deletionFrequency);
             logger.setLoggingLevel(loggingLevel);
+            logger.setConfigFile(configFile);
 
             if (logToLatest) {
                 Path latestLog = logDirectory.resolve("latest.log");

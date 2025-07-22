@@ -152,6 +152,8 @@ public interface Logger {
      */
     void addLogFile(Path file);
 
+    void setConfigFile(Path configFile);
+
     /**
      * Adds a file to which logs will be written by its name (should be resolved using the log directory).
      *
