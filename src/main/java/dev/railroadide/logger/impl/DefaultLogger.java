@@ -180,8 +180,8 @@ public class DefaultLogger implements Logger {
             }
 
             return logMessageArrangement;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (IOException exception) {
+            throw new RuntimeException("Something went wrong parsing the log config file!", exception);
         }
     }
 
