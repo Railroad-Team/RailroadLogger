@@ -176,7 +176,7 @@ public class DefaultLogger implements Logger {
 
 
             for(Map.Entry<String, Object> entry :  m.entrySet()){
-                logMessageArrangement = logMessageArrangement.replace(entry.getKey(), String.valueOf(entry.getValue()));
+                logMessageArrangement = logMessageArrangement.replace(entry.getKey(), Objects.toString(entry.getValue()));
             }
 
             return logMessageArrangement;
