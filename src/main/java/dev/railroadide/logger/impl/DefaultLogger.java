@@ -272,7 +272,7 @@ public class DefaultLogger implements Logger {
         private Path logDirectory = Path.of("logs");
         private final List<Path> filesToLogTo = new ArrayList<>();
         private boolean isCompressionEnabled = true;
-        private long logFrequency = java.util.concurrent.TimeUnit.SECONDS.toMillis(1); // Default to 1 second
+        private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
         private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
         private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
         private boolean logToLatest = true;
