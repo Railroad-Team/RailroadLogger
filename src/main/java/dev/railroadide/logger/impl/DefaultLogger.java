@@ -97,7 +97,7 @@ public class DefaultLogger implements Logger {
             JsonObject json = GSON.fromJson(Files.readString(this.configFile), JsonObject.class);
             fromJson(json);
         } catch (IOException exception) {
-            throw new RuntimeException(exception);
+            throw new RuntimeException("An error has occurred loading the config file", exception);
         }
 
     }
