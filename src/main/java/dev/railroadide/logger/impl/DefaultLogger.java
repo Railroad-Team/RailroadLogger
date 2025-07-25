@@ -1,11 +1,13 @@
 package dev.railroadide.logger.impl;
 
+import com.google.gson.*;
 import dev.railroadide.logger.Logger;
 import dev.railroadide.logger.LoggerManager;
 import dev.railroadide.logger.LoggingLevel;
 import dev.railroadide.logger.util.VariableRateScheduler;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.fusesource.jansi.Ansi;
 import org.fusesource.jansi.AnsiConsole;
@@ -22,10 +24,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -35,9 +34,9 @@ import java.util.regex.Pattern;
 import static org.fusesource.jansi.Ansi.Color.*;
 import static org.fusesource.jansi.Ansi.ansi;
 
-// TODO: Add support for customizing the log format
 // TODO: Add support for logging to a remote server (?)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
+// TODO: Add everything else to the config file
 public class DefaultLogger implements Logger {
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
     private final Queue<String> loggingMessages = new ConcurrentLinkedQueue<>();
@@ -51,9 +50,6 @@ public class DefaultLogger implements Logger {
 
     @Getter
     private final DateTimeFormatter logDateFormat;
-
-    @Getter
-    private final DateTimeFormatter loggingDateFormat;
 
     @Getter
     @Setter
@@ -75,9 +71,18 @@ public class DefaultLogger implements Logger {
     @Setter
     private LoggingLevel loggingLevel;
 
-    DefaultLogger(String name, DateTimeFormatter loggingDateFormat, DateTimeFormatter logDateFormat) {
+    @Getter
+    @Setter
+    private Path configFile;
+
+    @Getter
+    @Setter
+    private String loggingLayout;
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    DefaultLogger(String name, DateTimeFormatter logDateFormat) {
         this.name = name;
-        this.loggingDateFormat = loggingDateFormat;
         this.logDateFormat = logDateFormat;
     }
 
@@ -87,6 +92,17 @@ public class DefaultLogger implements Logger {
         AnsiConsole.systemInstall();
 
         beginWriteScheduling();
+        try {
+            if (Files.notExists(this.configFile)) {
+                Files.writeString(this.configFile, GSON.toJson(toJson()), StandardOpenOption.CREATE_NEW);
+            }
+
+            JsonObject json = GSON.fromJson(Files.readString(this.configFile), JsonObject.class);
+            fromJson(json);
+        } catch (IOException exception) {
+            throw new RuntimeException("An error has occurred loading the config file", exception);
+        }
+
     }
 
     @Override
@@ -117,7 +133,10 @@ public class DefaultLogger implements Logger {
             message = message.replaceFirst(BRACE_REGEX, Matcher.quoteReplacement(Objects.toString(object)));
         }
 
-        var messageBuilder = new StringBuilder(loggingDateFormat.format(LocalTime.now()) + " [" + Thread.currentThread().getName() + "] " + level.name() + " " + this.name + " - " + message);
+        String messaage = arrangeMessage(level, message);
+
+        StringBuilder messageBuilder = new StringBuilder(messaage);
+
         for (Throwable throwable : throwables) {
             var stringWriter = new StringWriter();
             try (var printWriter = new PrintWriter(stringWriter)) {
@@ -131,11 +150,56 @@ public class DefaultLogger implements Logger {
         message = messageBuilder.toString();
 
         int logLevel = this.loggingLevel.ordinal();
-        if(level.ordinal() <= logLevel){
+        if (level.ordinal() <= logLevel) {
             System.out.println(ansi().eraseLine().fg(logColor).a(message).reset());
         }
 
         loggingMessages.offer(message);
+    }
+
+    private JsonObject toJson() {
+        var jsonObject = new JsonObject();
+        jsonObject.addProperty("LoggingLayout", loggingLayout);
+        return jsonObject;
+    }
+
+    private void fromJson(JsonObject json) {
+        if (json == null)
+            return;
+
+        if (json.has("LoggingLayout")) {
+            JsonElement loggingLayoutElement = json.get("LoggingLayout");
+            if (loggingLayoutElement.isJsonPrimitive()) {
+                JsonPrimitive loggingLayoutPrimitive = loggingLayoutElement.getAsJsonPrimitive();
+                if (loggingLayoutPrimitive.isString()) {
+                    this.loggingLayout = loggingLayoutElement.getAsString();
+                }
+            }
+        }
+    }
+
+    private String arrangeMessage(LoggingLevel level, String message) {
+        LocalTime localTime = LocalTime.now();
+
+        Map<String, Object> hashMap = new HashMap<>();
+        hashMap.put("{hours}", StringUtils.leftPad(String.valueOf(localTime.getHour()), 2, '0'));
+        hashMap.put("{minutes}", StringUtils.leftPad(String.valueOf(localTime.getMinute()), 2, '0'));
+        hashMap.put("{seconds}", StringUtils.leftPad(String.valueOf(localTime.getSecond()), 2, '0'));
+        hashMap.put("{milliseconds}", StringUtils.leftPad(String.valueOf(localTime.getNano() / 1_000_000), 4, '0'));
+        hashMap.put("{nanoseconds}", StringUtils.leftPad(String.valueOf(localTime.getNano()), 7, '0'));
+
+        hashMap.put("{threadName}", Thread.currentThread().getName());
+        hashMap.put("{loggingLevelName}", level.name());
+        hashMap.put("{loggerName}", this.name);
+        hashMap.put("{message}", message);
+
+        String logMessage = loggingLayout;
+
+        for (Map.Entry<String, Object> entry : hashMap.entrySet()) {
+            logMessage = logMessage.replace(entry.getKey(), Objects.toString(entry.getValue()));
+        }
+
+        return logMessage;
     }
 
     @Override
@@ -188,7 +252,6 @@ public class DefaultLogger implements Logger {
         scheduler.scheduleAtVariableRate(() -> {
             if (loggingMessages.isEmpty())
                 return;
-
             try {
                 List<String> messageCache = new ArrayList<>(this.loggingMessages);
                 var logText = String.join("\n", messageCache);
@@ -208,7 +271,6 @@ public class DefaultLogger implements Logger {
      */
     public static class Builder {
         private final String name;
-        private DateTimeFormatter loggingDateFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
         private DateTimeFormatter logDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
         private Path logDirectory = Path.of("logs");
         private final List<Path> filesToLogTo = new ArrayList<>();
@@ -216,8 +278,9 @@ public class DefaultLogger implements Logger {
         private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
         private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
         private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
-
         private boolean logToLatest = true;
+        private Path configFile = Path.of("config.json");
+        private String loggingLayout = "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}";
 
         /**
          * Creates a new Builder instance with the specified name.
@@ -319,17 +382,6 @@ public class DefaultLogger implements Logger {
         }
 
         /**
-         * Sets the date format used for logging timestamps.
-         *
-         * @param loggingDateFormat The date format for logging timestamps.
-         * @return This Builder instance for method chaining.
-         */
-        public Builder loggingDateFormat(DateTimeFormatter loggingDateFormat) {
-            this.loggingDateFormat = loggingDateFormat;
-            return this;
-        }
-
-        /**
          * Sets the date format used for log file names.
          *
          * @param logDateFormat The date format for log file names.
@@ -346,8 +398,30 @@ public class DefaultLogger implements Logger {
          * @param loggingLevel The logging level to set.
          * @return This Builder instance for method chaining.
          */
-        public Builder loggingLevel(LoggingLevel loggingLevel){
+        public Builder loggingLevel(LoggingLevel loggingLevel) {
             this.loggingLevel = loggingLevel;
+            return this;
+        }
+
+        /**
+         * Sets the config file location for the logger
+         *
+         * @param configFile The path of the config file
+         * @return This Builder instance for method chaining.
+         */
+        public Builder configFile(Path configFile) {
+            this.configFile = configFile;
+            return this;
+        }
+
+        /**
+         * Sets the logging layout for the logger
+         *
+         * @param loggingLayout The logging layout to set
+         * @return This Builder instance for method chaining.
+         */
+        public Builder loggingLayout(String loggingLayout) {
+            this.loggingLayout = loggingLayout;
             return this;
         }
 
@@ -361,9 +435,6 @@ public class DefaultLogger implements Logger {
             if (name == null || name.isBlank())
                 throw new IllegalArgumentException("Logger name must not be null or empty.");
 
-            if (loggingDateFormat == null)
-                throw new IllegalArgumentException("Logging date format must not be null.");
-
             if (logDateFormat == null)
                 throw new IllegalArgumentException("Log date format must not be null.");
 
@@ -376,15 +447,19 @@ public class DefaultLogger implements Logger {
             if (deletionFrequency < 0)
                 throw new IllegalArgumentException("Deletion frequency must be greater than or equal to 0.");
 
-            if(loggingLevel == null)
+            if (loggingLevel == null)
                 throw new IllegalArgumentException("Logging level must not be null.");
 
-            var logger = new DefaultLogger(name, loggingDateFormat, logDateFormat);
+            if (configFile == null)
+                throw new IllegalStateException("Config file location must be set before building the logger.");
+
+            var logger = new DefaultLogger(name, logDateFormat);
             logger.setLogDirectory(logDirectory);
             logger.setCompressionEnabled(isCompressionEnabled);
             logger.setLogFrequency(logFrequency);
             logger.setDeletionFrequency(deletionFrequency);
             logger.setLoggingLevel(loggingLevel);
+            logger.setConfigFile(configFile);
 
             if (logToLatest) {
                 Path latestLog = logDirectory.resolve("latest.log");

@@ -153,6 +153,27 @@ public interface Logger {
     void addLogFile(Path file);
 
     /**
+     * Sets the config file location for the logger.
+     *
+     * @param configFile The path of the config file.
+     */
+    void setConfigFile(Path configFile);
+
+    /**
+     * Gets the logging layout for the logger.
+     *
+     * @return The current logging layout.
+     */
+    String getLoggingLayout();
+
+    /**
+     * Sets the logging layout for the logger.
+     *
+     * @param loggingLayout The current logging layout
+     */
+    void setLoggingLayout(String loggingLayout);
+
+    /**
      * Adds a file to which logs will be written by its name (should be resolved using the log directory).
      *
      * @param name The name of the file to add to the log.
