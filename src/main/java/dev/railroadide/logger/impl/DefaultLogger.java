@@ -170,7 +170,6 @@ public class DefaultLogger implements Logger {
                 JsonPrimitive loggingLayoutPrimitive = loggingLayoutElement.getAsJsonPrimitive();
                 if (loggingLayoutPrimitive.isString()) {
                     this.loggingLayout = loggingLayoutElement.getAsString();
-                    System.out.println(this.loggingLayout);
                 }
             }
         }
