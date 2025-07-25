@@ -40,3 +40,6 @@ bin/
 
 ### Log folder ###
 logs/
+
+### Logger config file ###
+config.json

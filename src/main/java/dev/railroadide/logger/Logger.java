@@ -152,6 +152,11 @@ public interface Logger {
      */
     void addLogFile(Path file);
 
+    /**
+     * Sets the config file location for the logger.
+     *
+     * @param configFile – The path of the config file.
+     */
     void setConfigFile(Path configFile);
 
     /**

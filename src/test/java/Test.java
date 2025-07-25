@@ -17,7 +17,6 @@ public class Test {
                 .addLogFile("yes/no.log")
                 .isCompressionEnabled(true)
                 .loggingLevel(LoggingLevel.INFO)
-                .configFile(Path.of("src\\test\\config.txt"))
                 .build();
 
         LoggerManager.init();

@@ -1,11 +1,13 @@
 package dev.railroadide.logger.impl;
 
+import com.google.gson.*;
 import dev.railroadide.logger.Logger;
 import dev.railroadide.logger.LoggerManager;
 import dev.railroadide.logger.LoggingLevel;
 import dev.railroadide.logger.util.VariableRateScheduler;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.fusesource.jansi.Ansi;
 import org.fusesource.jansi.AnsiConsole;
@@ -49,9 +51,6 @@ public class DefaultLogger implements Logger {
     private final DateTimeFormatter logDateFormat;
 
     @Getter
-    private final DateTimeFormatter loggingDateFormat;
-
-    @Getter
     @Setter
     private boolean isCompressionEnabled = true;
 
@@ -75,9 +74,12 @@ public class DefaultLogger implements Logger {
     @Setter
     private Path configFile;
 
-    DefaultLogger(String name, DateTimeFormatter loggingDateFormat, DateTimeFormatter logDateFormat) {
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    private String loggingLayout = "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}";
+
+    DefaultLogger(String name, DateTimeFormatter logDateFormat) {
         this.name = name;
-        this.loggingDateFormat = loggingDateFormat;
         this.logDateFormat = logDateFormat;
     }
 
@@ -87,6 +89,17 @@ public class DefaultLogger implements Logger {
         AnsiConsole.systemInstall();
 
         beginWriteScheduling();
+        try {
+            if (Files.notExists(this.configFile)) {
+                Files.writeString(this.configFile, GSON.toJson(toJson()), StandardOpenOption.CREATE_NEW);
+            }
+
+            JsonObject json = GSON.fromJson(Files.readString(this.configFile), JsonObject.class);
+            fromJson(json);
+        } catch (IOException exception) {
+            throw new RuntimeException(exception);
+        }
+
     }
 
     @Override
@@ -134,55 +147,57 @@ public class DefaultLogger implements Logger {
         message = messageBuilder.toString();
 
         int logLevel = this.loggingLevel.ordinal();
-        if(level.ordinal() <= logLevel){
+        if (level.ordinal() <= logLevel) {
             System.out.println(ansi().eraseLine().fg(logColor).a(message).reset());
         }
 
         loggingMessages.offer(message);
     }
 
-    private String arrangeMessage(LoggingLevel level, String message){
+    private JsonObject toJson() {
+        var jsonObject = new JsonObject();
+        jsonObject.addProperty("LoggingLayout", loggingLayout);
+        return jsonObject;
+    }
+
+    private void fromJson(JsonObject json) {
+        if (json == null)
+            return;
+
+        if (json.has("LoggingLayout")) {
+            JsonElement loggingLayoutElement = json.get("LoggingLayout");
+            if (loggingLayoutElement.isJsonPrimitive()) {
+                JsonPrimitive loggingLayoutPrimitive = loggingLayoutElement.getAsJsonPrimitive();
+                if (loggingLayoutPrimitive.isString()) {
+                    this.loggingLayout = loggingLayoutElement.getAsString();
+                    System.out.println(this.loggingLayout);
+                }
+            }
+        }
+    }
+
+    private String arrangeMessage(LoggingLevel level, String message) {
         LocalTime localTime = LocalTime.now();
 
-        long hours = localTime.getHour();
-        long minutes = localTime.getMinute();
-        long seconds = localTime.getSecond();
-        long milliseconds = localTime.getNano() / 1_000_000;
-        long nanoseconds = localTime.getNano();
+        Map<String, Object> hashMap = new HashMap<>();
+        hashMap.put("{hours}", StringUtils.leftPad(String.valueOf(localTime.getHour()), 2, '0'));
+        hashMap.put("{minutes}", StringUtils.leftPad(String.valueOf(localTime.getMinute()), 2, '0'));
+        hashMap.put("{seconds}", StringUtils.leftPad(String.valueOf(localTime.getSecond()), 2, '0'));
+        hashMap.put("{milliseconds}", StringUtils.leftPad(String.valueOf(localTime.getNano() / 1_000_000), 4, '0'));
+        hashMap.put("{nanoseconds}", StringUtils.leftPad(String.valueOf(localTime.getNano()), 7, '0'));
 
-        String threadName = Thread.currentThread().getName();
-        String loggingLevelName = level.name();
-        String loggerName = this.name;
+        hashMap.put("{threadName}", Thread.currentThread().getName());
+        hashMap.put("{loggingLevelName}", level.name());
+        hashMap.put("{loggerName}", this.name);
+        hashMap.put("{message}", message);
 
-        try {
-            if(Files.notExists(this.configFile)){
-                Files.writeString(this.configFile, "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}", StandardOpenOption.CREATE_NEW);
-            }
+        String logMessage = loggingLayout;
 
-            String logMessageArrangement = Files.readString(this.configFile);
-            Map<String, Object> m = new HashMap<>();
-
-
-            m.put("{hours}", hours);
-            m.put("{minutes}", minutes);
-            m.put("{seconds}", seconds);
-            m.put("{milliseconds}", milliseconds);
-            m.put("{nanoseconds}", nanoseconds);
-
-            m.put("{threadName}", threadName);
-            m.put("{loggingLevelName}", loggingLevelName);
-            m.put("{loggerName}", loggerName);
-            m.put("{message}", message);
-
-
-            for(Map.Entry<String, Object> entry :  m.entrySet()){
-                logMessageArrangement = logMessageArrangement.replace(entry.getKey(), Objects.toString(entry.getValue()));
-            }
-
-            return logMessageArrangement;
-        } catch (IOException exception) {
-            throw new RuntimeException("Something went wrong parsing the log config file!", exception);
+        for (Map.Entry<String, Object> entry : hashMap.entrySet()) {
+            logMessage = logMessage.replace(entry.getKey(), Objects.toString(entry.getValue()));
         }
+
+        return logMessage;
     }
 
     @Override
@@ -194,7 +209,7 @@ public class DefaultLogger implements Logger {
             String logText = String.join("\n", loggingMessages);
             loggingMessages.clear();
             for (Path logFile : this.filesToLogTo) {
-                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, java.nio.file.StandardOpenOption.CREATE);
             }
         } catch (IOException exception) {
             System.err.println("Failed to close logger: " + exception.getMessage());
@@ -240,7 +255,7 @@ public class DefaultLogger implements Logger {
                 var logText = String.join("\n", messageCache);
                 this.loggingMessages.removeAll(messageCache);
                 for (Path logFile : this.filesToLogTo) {
-                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, java.nio.file.StandardOpenOption.CREATE);
                 }
             } catch (IOException exception) {
                 System.err.println("Failed to write log messages: " + exception.getMessage());
@@ -253,18 +268,16 @@ public class DefaultLogger implements Logger {
      * Builder for creating a DefaultLogger instance.
      */
     public static class Builder {
-        //default builder attributes
         private final String name;
-        private DateTimeFormatter loggingDateFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
         private DateTimeFormatter logDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
         private Path logDirectory = Path.of("logs");
         private final List<Path> filesToLogTo = new ArrayList<>();
         private boolean isCompressionEnabled = true;
-        private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
+        private long logFrequency = java.util.concurrent.TimeUnit.SECONDS.toMillis(1); // Default to 1 second
         private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
         private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
         private boolean logToLatest = true;
-        private Path configFile = Path.of("config.txt");
+        private Path configFile = Path.of("config.json");
 
         /**
          * Creates a new Builder instance with the specified name.
@@ -366,17 +379,6 @@ public class DefaultLogger implements Logger {
         }
 
         /**
-         * Sets the date format used for logging timestamps.
-         *
-         * @param loggingDateFormat The date format for logging timestamps.
-         * @return This Builder instance for method chaining.
-         */
-        public Builder loggingDateFormat(DateTimeFormatter loggingDateFormat) {
-            this.loggingDateFormat = loggingDateFormat;
-            return this;
-        }
-
-        /**
          * Sets the date format used for log file names.
          *
          * @param logDateFormat The date format for log file names.
@@ -393,7 +395,7 @@ public class DefaultLogger implements Logger {
          * @param loggingLevel The logging level to set.
          * @return This Builder instance for method chaining.
          */
-        public Builder loggingLevel(LoggingLevel loggingLevel){
+        public Builder loggingLevel(LoggingLevel loggingLevel) {
             this.loggingLevel = loggingLevel;
             return this;
         }
@@ -404,7 +406,7 @@ public class DefaultLogger implements Logger {
          * @param configFile The path of the config file
          * @return This Builder instance for method chaining.
          */
-        public Builder configFile(Path configFile){
+        public Builder configFile(Path configFile) {
             this.configFile = configFile;
             return this;
         }
@@ -419,9 +421,6 @@ public class DefaultLogger implements Logger {
             if (name == null || name.isBlank())
                 throw new IllegalArgumentException("Logger name must not be null or empty.");
 
-            if (loggingDateFormat == null)
-                throw new IllegalArgumentException("Logging date format must not be null.");
-
             if (logDateFormat == null)
                 throw new IllegalArgumentException("Log date format must not be null.");
 
@@ -434,13 +433,13 @@ public class DefaultLogger implements Logger {
             if (deletionFrequency < 0)
                 throw new IllegalArgumentException("Deletion frequency must be greater than or equal to 0.");
 
-            if(loggingLevel == null)
+            if (loggingLevel == null)
                 throw new IllegalArgumentException("Logging level must not be null.");
 
             if (configFile == null)
                 throw new IllegalStateException("Config file location must be set before building the logger.");
 
-            var logger = new DefaultLogger(name, loggingDateFormat, logDateFormat);
+            var logger = new DefaultLogger(name, logDateFormat);
             logger.setLogDirectory(logDirectory);
             logger.setCompressionEnabled(isCompressionEnabled);
             logger.setLogFrequency(logFrequency);
