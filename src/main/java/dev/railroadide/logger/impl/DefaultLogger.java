@@ -254,7 +254,7 @@ public class DefaultLogger implements Logger {
                 var logText = String.join("\n", messageCache);
                 this.loggingMessages.removeAll(messageCache);
                 for (Path logFile : this.filesToLogTo) {
-                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, java.nio.file.StandardOpenOption.CREATE);
+                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
                 }
             } catch (IOException exception) {
                 System.err.println("Failed to write log messages: " + exception.getMessage());
