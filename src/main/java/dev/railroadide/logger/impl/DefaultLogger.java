@@ -36,6 +36,7 @@ import static org.fusesource.jansi.Ansi.ansi;
 
 // TODO: Add support for logging to a remote server (?)
 // TODO: Add support for uploading a log file to a remote server (e.g., for bug reports)
+// TODO: Add everything else to the config file
 public class DefaultLogger implements Logger {
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
     private final Queue<String> loggingMessages = new ConcurrentLinkedQueue<>();
@@ -74,9 +75,11 @@ public class DefaultLogger implements Logger {
     @Setter
     private Path configFile;
 
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    @Getter
+    @Setter
+    private String loggingLayout;
 
-    private String loggingLayout = "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}";
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     DefaultLogger(String name, DateTimeFormatter logDateFormat) {
         this.name = name;
@@ -278,6 +281,7 @@ public class DefaultLogger implements Logger {
         private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
         private boolean logToLatest = true;
         private Path configFile = Path.of("config.json");
+        private String loggingLayout = "{hours}:{minutes}:{seconds} [{threadName}] {loggingLevelName} {loggerName} - {message}";
 
         /**
          * Creates a new Builder instance with the specified name.
@@ -408,6 +412,17 @@ public class DefaultLogger implements Logger {
          */
         public Builder configFile(Path configFile) {
             this.configFile = configFile;
+            return this;
+        }
+
+        /**
+         * Sets the logging layout for the logger
+         *
+         * @param loggingLayout The logging layout to set
+         * @return This Builder instance for method chaining.
+         */
+        public Builder loggingLayout(String loggingLayout) {
+            this.loggingLayout = loggingLayout;
             return this;
         }
 
