@@ -208,7 +208,7 @@ public class DefaultLogger implements Logger {
             String logText = String.join("\n", loggingMessages);
             loggingMessages.clear();
             for (Path logFile : this.filesToLogTo) {
-                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, java.nio.file.StandardOpenOption.CREATE);
+                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
             }
         } catch (IOException exception) {
             System.err.println("Failed to close logger: " + exception.getMessage());
