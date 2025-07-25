@@ -100,7 +100,7 @@ public class DefaultLogger implements Logger {
             JsonObject json = GSON.fromJson(Files.readString(this.configFile), JsonObject.class);
             fromJson(json);
         } catch (IOException exception) {
-            throw new RuntimeException(exception);
+            throw new RuntimeException("An error has occurred loading the config file", exception);
         }
 
     }
@@ -173,7 +173,6 @@ public class DefaultLogger implements Logger {
                 JsonPrimitive loggingLayoutPrimitive = loggingLayoutElement.getAsJsonPrimitive();
                 if (loggingLayoutPrimitive.isString()) {
                     this.loggingLayout = loggingLayoutElement.getAsString();
-                    System.out.println(this.loggingLayout);
                 }
             }
         }
@@ -212,7 +211,7 @@ public class DefaultLogger implements Logger {
             String logText = String.join("\n", loggingMessages);
             loggingMessages.clear();
             for (Path logFile : this.filesToLogTo) {
-                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, java.nio.file.StandardOpenOption.CREATE);
+                Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
             }
         } catch (IOException exception) {
             System.err.println("Failed to close logger: " + exception.getMessage());
@@ -258,7 +257,7 @@ public class DefaultLogger implements Logger {
                 var logText = String.join("\n", messageCache);
                 this.loggingMessages.removeAll(messageCache);
                 for (Path logFile : this.filesToLogTo) {
-                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, java.nio.file.StandardOpenOption.CREATE);
+                    Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
                 }
             } catch (IOException exception) {
                 System.err.println("Failed to write log messages: " + exception.getMessage());
@@ -276,7 +275,7 @@ public class DefaultLogger implements Logger {
         private Path logDirectory = Path.of("logs");
         private final List<Path> filesToLogTo = new ArrayList<>();
         private boolean isCompressionEnabled = true;
-        private long logFrequency = java.util.concurrent.TimeUnit.SECONDS.toMillis(1); // Default to 1 second
+        private long logFrequency = TimeUnit.SECONDS.toMillis(1); // Default to 1 second
         private long deletionFrequency = TimeUnit.DAYS.toMillis(1); // Default to 1 day
         private LoggingLevel loggingLevel = LoggingLevel.DEBUG;
         private boolean logToLatest = true;
