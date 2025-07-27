@@ -102,7 +102,6 @@ public class DefaultLogger implements Logger {
         } catch (IOException exception) {
             throw new RuntimeException("An error has occurred loading the config file", exception);
         }
-
     }
 
     @Override
@@ -159,6 +158,18 @@ public class DefaultLogger implements Logger {
 
     private JsonObject toJson() {
         var jsonObject = new JsonObject();
+        var jsonArray = new JsonArray();
+
+        for(Path path : filesToLogTo){
+            jsonArray.add(path.toString());
+        }
+
+        jsonObject.add("FilesToLogTo", jsonArray);
+        jsonObject.addProperty("IsCompressionEnabled", isCompressionEnabled);
+        jsonObject.addProperty("LogFrequency", logFrequency);
+        jsonObject.addProperty("DeletionFrequency", deletionFrequency);
+        jsonObject.addProperty("LogDirectory", logDirectory.toString());
+        jsonObject.addProperty("LoggingLevel", loggingLevel.name());
         jsonObject.addProperty("LoggingLayout", loggingLayout);
         return jsonObject;
     }
@@ -166,6 +177,73 @@ public class DefaultLogger implements Logger {
     private void fromJson(JsonObject json) {
         if (json == null)
             return;
+
+        if (json.has("FilesToLogTo")) {
+            JsonElement filesToLogToElement = json.get("FilesToLogTo");
+            if (filesToLogToElement.isJsonArray()) {
+                JsonArray filesArray = filesToLogToElement.getAsJsonArray();
+                for (JsonElement fileElement : filesArray) {
+                    if (fileElement.isJsonPrimitive() && fileElement.getAsJsonPrimitive().isString()) {
+                        this.filesToLogTo.add(Path.of(fileElement.getAsString()));
+                    }
+                }
+            }
+        }
+
+        if(json.has("IsCompressionEnabled")){
+            JsonElement isCompressionEnabledElement = json.get("IsCompressionEnabled");
+            if (isCompressionEnabledElement.isJsonPrimitive()) {
+                JsonPrimitive isCompressionEnabledPrimitive = isCompressionEnabledElement.getAsJsonPrimitive();
+                if (isCompressionEnabledPrimitive.isBoolean()) {
+                    this.isCompressionEnabled = isCompressionEnabledElement.getAsBoolean();
+                }
+            }
+        }
+
+        if (json.has("LogFrequency")) {
+            JsonElement logFrequencyElement = json.get("LogFrequency");
+            if (logFrequencyElement.isJsonPrimitive()) {
+                JsonPrimitive logFrequencyPrimitive = logFrequencyElement.getAsJsonPrimitive();
+                if (logFrequencyPrimitive.isNumber()) {
+                    this.logFrequency = logFrequencyElement.getAsLong();
+                }
+            }
+        }
+
+        if (json.has("DeletionFrequency")) {
+            JsonElement deletionFrequencyElement = json.get("DeletionFrequency");
+            if (deletionFrequencyElement.isJsonPrimitive()) {
+                JsonPrimitive deletionFrequencyPrimitive = deletionFrequencyElement.getAsJsonPrimitive();
+                if (deletionFrequencyPrimitive.isNumber()) {
+                    this.deletionFrequency = deletionFrequencyElement.getAsLong();
+                }
+            }
+        }
+
+        if (json.has("LogDirectory")) {
+            JsonElement logDirectoryElement = json.get("LogDirectory");
+            if (logDirectoryElement.isJsonPrimitive()) {
+                JsonPrimitive logDirectoryPrimitive = logDirectoryElement.getAsJsonPrimitive();
+                if (logDirectoryPrimitive.isString()) {
+                    this.logDirectory = Path.of(logDirectoryElement.getAsString());
+                }
+            }
+        }
+
+        if (json.has("LoggingLevel")) {
+            JsonElement loggingLevelElement = json.get("LoggingLevel");
+            if (loggingLevelElement.isJsonPrimitive()) {
+                JsonPrimitive loggingLevelPrimitive = loggingLevelElement.getAsJsonPrimitive();
+                if (loggingLevelPrimitive.isString()) {
+                    try {
+                        this.loggingLevel = LoggingLevel.valueOf(loggingLevelElement.getAsString().toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException e) {
+                        System.err.println("Invalid logging level in config file: " + loggingLevelElement.getAsString());
+                        this.loggingLevel = LoggingLevel.DEBUG; // Default to DEBUG if invalid
+                    }
+                }
+            }
+        }
 
         if (json.has("LoggingLayout")) {
             JsonElement loggingLayoutElement = json.get("LoggingLayout");
@@ -247,6 +325,8 @@ public class DefaultLogger implements Logger {
 
         this.deletionFrequency = timeUnit.toMillis(frequency);
     }
+
+    
 
     private void beginWriteScheduling() {
         scheduler.scheduleAtVariableRate(() -> {
@@ -438,20 +518,24 @@ public class DefaultLogger implements Logger {
             if (logDateFormat == null)
                 throw new IllegalArgumentException("Log date format must not be null.");
 
-            if (logDirectory == null)
-                throw new IllegalStateException("Log directory must be set before building the logger.");
-
             if (logFrequency < 0)
                 throw new IllegalArgumentException("Log frequency must be greater than or equal to 0.");
 
             if (deletionFrequency < 0)
                 throw new IllegalArgumentException("Deletion frequency must be greater than or equal to 0.");
 
+            if (logDirectory == null)
+                throw new IllegalStateException("Log directory must be set before building the logger.");
+
             if (loggingLevel == null)
                 throw new IllegalArgumentException("Logging level must not be null.");
 
             if (configFile == null)
                 throw new IllegalStateException("Config file location must be set before building the logger.");
+
+            if(loggingLayout == null){
+                throw new IllegalStateException("Logging layout must be set before building the logger.");
+            }
 
             var logger = new DefaultLogger(name, logDateFormat);
             logger.setLogDirectory(logDirectory);
@@ -460,6 +544,7 @@ public class DefaultLogger implements Logger {
             logger.setDeletionFrequency(deletionFrequency);
             logger.setLoggingLevel(loggingLevel);
             logger.setConfigFile(configFile);
+            logger.setLoggingLayout(loggingLayout);
 
             if (logToLatest) {
                 Path latestLog = logDirectory.resolve("latest.log");
