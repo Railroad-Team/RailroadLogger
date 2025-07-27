@@ -531,9 +531,8 @@ public class DefaultLogger implements Logger {
             if (configFile == null)
                 throw new IllegalStateException("Config file location must be set before building the logger.");
 
-            if(loggingLayout == null){
+            if(loggingLayout == null)
                 throw new IllegalStateException("Logging layout must be set before building the logger.");
-            }
 
             var logger = new DefaultLogger(name, logDateFormat);
             logger.setLogDirectory(logDirectory);
