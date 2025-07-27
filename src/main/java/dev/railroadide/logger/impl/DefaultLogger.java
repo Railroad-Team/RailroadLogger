@@ -158,13 +158,13 @@ public class DefaultLogger implements Logger {
 
     private JsonObject toJson() {
         var jsonObject = new JsonObject();
-        var jsonArray = new JsonArray();
+        var filesArray = new JsonArray();
 
         for(Path path : filesToLogTo){
-            jsonArray.add(path.toString());
+            filesArray.add(path.toString());
         }
 
-        jsonObject.add("FilesToLogTo", jsonArray);
+        jsonObject.add("FilesToLogTo", filesArray);
         jsonObject.addProperty("IsCompressionEnabled", isCompressionEnabled);
         jsonObject.addProperty("LogFrequency", logFrequency);
         jsonObject.addProperty("DeletionFrequency", deletionFrequency);
