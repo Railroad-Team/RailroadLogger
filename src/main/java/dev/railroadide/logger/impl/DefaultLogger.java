@@ -326,8 +326,6 @@ public class DefaultLogger implements Logger {
         this.deletionFrequency = timeUnit.toMillis(frequency);
     }
 
-    
-
     private void beginWriteScheduling() {
         scheduler.scheduleAtVariableRate(() -> {
             if (loggingMessages.isEmpty())
