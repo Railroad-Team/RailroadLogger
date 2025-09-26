@@ -38,7 +38,11 @@ public final class LoggerManager {
             if (logger == null)
                 continue;
 
-            logFiles.addAll(logger.getFilesToLogTo());
+            LoggerService service = logger.getService();
+            if (service == null)
+                continue;
+
+            logFiles.addAll(service.getFilesToLogTo());
         }
 
         for (Logger logger : LOGGERS) {
@@ -115,18 +119,19 @@ public final class LoggerManager {
     }
 
     /**
-     * Registers a new logger with the LoggerManager.
-     * If the logger is already registered, it will return the existing instance.
-     *
-     * @param logger The logger to register.
-     * @return The registered logger instance.
+     * Internally wires a logger into the manager lifecycle. Loggers created through the provided builders
+     * call this automatically, so library consumers do not need to invoke it manually.
      */
-    public static <T extends Logger> T registerLogger(T logger) {
+    public static void track(Logger logger) {
         if (logger == null)
             throw new IllegalArgumentException("Logger cannot be null");
 
+        LoggerService service = logger.getService();
+        if (service == null)
+            throw new IllegalArgumentException("Logger must provide a LoggerService before being tracked");
+
         if (LOGGERS.contains(logger))
-            return logger;
+            return;
 
         LOGGERS.add(logger);
 
@@ -137,32 +142,6 @@ public final class LoggerManager {
                 throw new RuntimeException("Failed to initialize logger: " + logger.getName(), exception);
             }
         }
-
-        return logger;
-    }
-
-    /**
-     * Unregisters a logger from the LoggerManager.
-     * If the logger is not registered, it will throw an exception.
-     *
-     * @param logger The logger to unregister.
-     */
-    public static void unregisterLogger(Logger logger) {
-        if (logger == null)
-            throw new IllegalArgumentException("Logger cannot be null");
-
-        if (!LOGGERS.contains(logger))
-            throw new IllegalArgumentException("Logger is not registered: " + logger.getName());
-
-        if (initialized) {
-            try {
-                logger.close();
-            } catch (Exception exception) {
-                throw new RuntimeException("Failed to close logger: " + logger.getName(), exception);
-            }
-        }
-
-        LOGGERS.remove(logger);
     }
 
     private static Map<Path, List<Logger>> groupLoggersByFile() {
@@ -172,7 +151,11 @@ public final class LoggerManager {
             if (logger == null)
                 continue;
 
-            for (Path logFile : logger.getFilesToLogTo()) {
+            LoggerService service = logger.getService();
+            if (service == null)
+                continue;
+
+            for (Path logFile : service.getFilesToLogTo()) {
                 if (logFile == null)
                     continue;
 
@@ -191,8 +174,12 @@ public final class LoggerManager {
             FileTime dateCreated = Files.readAttributes(logPath, BasicFileAttributes.class).creationTime();
             List<Logger> loggers = logFiles.get(logPath);
             for (Logger logger : loggers) {
-                Path logDirectory = logger.getLogDirectory();
-                String timestamp = logger.formatFileTime(dateCreated);
+                LoggerService service = logger.getService();
+                if (service == null)
+                    continue;
+
+                Path logDirectory = service.getLogDirectory();
+                String timestamp = service.formatFileTime(dateCreated);
                 String logNameWithoutExtension = logPath.getFileName().toString().substring(0, logPath.getFileName().toString().lastIndexOf('.'));
                 String candidate = String.format("%s_%s.log", timestamp, logNameWithoutExtension);
                 Path archivedLogPath = logDirectory.resolve(candidate);
@@ -204,7 +191,7 @@ public final class LoggerManager {
                 }
 
                 copyAndRecreate(logPath, archivedLogPath);
-                if (logger.isCompressionEnabled()) {
+                if (service.isCompressionEnabled()) {
                     LoggerUtils.compress(archivedLogPath);
                     Files.deleteIfExists(archivedLogPath);
                 }
@@ -222,24 +209,29 @@ public final class LoggerManager {
         Files.copy(filePath, newPath, StandardCopyOption.REPLACE_EXISTING);
         try {
             Files.setAttribute(filePath, "creationTime", FileTime.from(Instant.now()));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         Files.write(filePath, new byte[0], StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     private static void deleteOldLogs(Logger logger) throws IOException {
-        long frequency = logger.getDeletionFrequency();
+        LoggerService service = logger.getService();
+        if (service == null)
+            return;
+
+        long frequency = service.getDeletionFrequency();
         if (frequency <= 0)
             return;
 
         Instant cutoff = Instant.now().minusMillis(frequency);
-        Path dir = logger.getLogDirectory();
+        Path dir = service.getLogDirectory();
         if (Files.notExists(dir) || !Files.isDirectory(dir))
             return;
 
         try (Stream<Path> files = Files.list(dir)) {
             List<Path> filesList = files.filter(Files::isRegularFile).toList();
             for (Path file : filesList) {
-                DateTimeFormatter logDateFormat = logger.getLogDateFormat();
+                DateTimeFormatter logDateFormat = service.getLogDateFormat();
                 try {
                     String fileName = file.getFileName().toString()
                             .replace(".tar.gz", "")

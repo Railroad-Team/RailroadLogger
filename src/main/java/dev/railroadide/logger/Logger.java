@@ -1,11 +1,5 @@
 package dev.railroadide.logger;
 
-import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 /**
  * Interface for a logging system that provides methods to log messages at different levels.
  * Implementations of this interface should handle the actual logging mechanism.
@@ -74,140 +68,11 @@ public interface Logger {
     void log(String message, LoggingLevel level, Object... objects);
 
     /**
-     * Sets whether compression is enabled for the logger.
+     * Provides the service used to configure this logger.
      *
-     * @param compression true to enable compression, false to disable it.
+     * @return The service instance holding the logger configuration.
      */
-    void setCompressionEnabled(boolean compression);
-
-    /**
-     * Gets the frequency of logging in milliseconds.
-     *
-     * @return The frequency in milliseconds.
-     */
-    boolean isCompressionEnabled();
-
-    /**
-     * Gets the frequency of logging in milliseconds.
-     *
-     * @return The frequency in milliseconds.
-     */
-    long getLogFrequency();
-
-    /**
-     * Sets the frequency of logging in a specified time unit.
-     *
-     * @param frequency The frequency value.
-     * @param timeUnit  The time unit for the frequency.
-     */
-    void setLogFrequency(long frequency, TimeUnit timeUnit);
-
-    /**
-     * Gets the frequency of log deletion in milliseconds.
-     *
-     * @return The frequency in milliseconds.
-     */
-    long getDeletionFrequency();
-
-    /**
-     * Sets the frequency of log deletion in a specified time unit.
-     *
-     * @param frequency The frequency value.
-     * @param timeUnit  The time unit for the frequency.
-     */
-    void setDeletionFrequency(long frequency, TimeUnit timeUnit);
-
-    /**
-     * Gets the directory where logs are stored.
-     *
-     * @return The path to the log directory.
-     */
-    Path getLogDirectory();
-
-    /**
-     * Sets the directory where logs will be stored.
-     *
-     * @param logDirectory The path to the log directory.
-     */
-    void setLogDirectory(Path logDirectory);
-
-    /**
-     * Gets the current logging level.
-     *
-     * @return The current logging level.
-     */
-    LoggingLevel getLoggingLevel();
-
-    /**
-     * Sets the logging level for the logger.
-     *
-     * @param level The logging level to set.
-     */
-    void setLoggingLevel(LoggingLevel level);
-
-    /**
-     * Adds a file to which logs will be written.
-     *
-     * @param file The file to add to the log.
-     */
-    void addLogFile(Path file);
-
-    /**
-     * Sets the config file location for the logger.
-     *
-     * @param configFile The path of the config file.
-     */
-    void setConfigFile(Path configFile);
-
-    /**
-     * Gets the logging layout for the logger.
-     *
-     * @return The current logging layout.
-     */
-    String getLoggingLayout();
-
-    /**
-     * Sets the logging layout for the logger.
-     *
-     * @param loggingLayout The current logging layout
-     */
-    void setLoggingLayout(String loggingLayout);
-
-    /**
-     * Adds a file to which logs will be written by its name (should be resolved using the log directory).
-     *
-     * @param name The name of the file to add to the log.
-     */
-    default void addLogFile(String name) {
-        Path logDirectory = getLogDirectory();
-        if (logDirectory == null)
-            throw new IllegalStateException("Log directory must be set before adding files to log to.");
-
-        Path file = logDirectory.resolve(name);
-        addLogFile(file);
-    }
-
-    /**
-     * Gets the list of files to which logs will be written.
-     *
-     * @return A list of paths to the log files.
-     */
-    List<Path> getFilesToLogTo();
-
-    /**
-     * Gets the date format used for the log files.
-     *
-     * @return The date format as a DateTimeFormatter.
-     */
-    DateTimeFormatter getLogDateFormat();
-
-    /**
-     * Formats a FileTime object into a human-readable string.
-     *
-     * @param fileTime The FileTime object to format.
-     * @return A formatted string representing the FileTime.
-     */
-    String formatFileTime(FileTime fileTime);
+    LoggerService getService();
 
     /**
      * Closes the logger and releases any resources it holds.

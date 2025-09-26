@@ -24,9 +24,9 @@ public class VariableRateScheduler {
      * Schedules a task to run at a variable rate, where the delay between executions is determined by the provided
      * delay supplier.
      *
-     * @param task           The task to run.
-     * @param initialDelay   The initial delay before the first execution.
-     * @param delaySupplier  A supplier that provides the delay for subsequent executions.
+     * @param task          The task to run.
+     * @param initialDelay  The initial delay before the first execution.
+     * @param delaySupplier A supplier that provides the delay for subsequent executions.
      */
     public void scheduleAtVariableRate(Runnable task, long initialDelay, Supplier<Long> delaySupplier) {
         // Wrap the user’s task so that when it completes, we schedule the next one
