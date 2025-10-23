@@ -4,7 +4,6 @@ import dev.railroadide.logger.Logger;
 import dev.railroadide.logger.LoggerManager;
 import dev.railroadide.logger.LoggerService;
 import dev.railroadide.logger.LoggingLevel;
-import dev.railroadide.logger.util.VariableRateScheduler;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -20,6 +19,8 @@ import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,8 +34,7 @@ public class DefaultLogger implements Logger {
     private static final String BRACE_REGEX = "(?<!\\\\)\\{}";
 
     private final Queue<String> loggingMessages = new ConcurrentLinkedQueue<>();
-    private final VariableRateScheduler scheduler = new VariableRateScheduler(
-            Executors.newSingleThreadScheduledExecutor(new BasicThreadFactory.Builder().daemon(true).build()));
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(new BasicThreadFactory.Builder().daemon(true).build());
 
     @Getter
     private final String name;
@@ -152,13 +152,20 @@ public class DefaultLogger implements Logger {
     }
 
     private void beginWriteScheduling() {
-        scheduler.scheduleAtVariableRate(() -> {
+        scheduler.scheduleAtFixedRate(() -> {
             if (loggingMessages.isEmpty())
                 return;
+
             try {
                 List<String> messageCache = new ArrayList<>(this.loggingMessages);
+                if(messageCache.isEmpty())
+                    return;
+
                 var logText = String.join("\n", messageCache);
                 this.loggingMessages.removeAll(messageCache);
+                if(logText.isEmpty())
+                    return;
+
                 for (Path logFile : service.getFilesToLogTo()) {
                     Files.writeString(logFile, logText + "\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
                 }
@@ -166,7 +173,7 @@ public class DefaultLogger implements Logger {
                 System.err.println("Failed to write log messages: " + exception.getMessage());
                 exception.printStackTrace();
             }
-        }, 0, service::getLogFrequency);
+        }, 0, service.getLogFrequency(), TimeUnit.MILLISECONDS);
     }
 
     /**
